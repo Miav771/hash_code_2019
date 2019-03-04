@@ -3,8 +3,11 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::thread;
 
+const PROGRESS_REPORT_INTERVAL: usize = 10000;
+const INPUT: &str = "abcde";
+
 fn main() {
-    test("abcde");
+    process_inputs(INPUT);
 }
 
 #[derive(Debug)]
@@ -30,17 +33,16 @@ struct Picture {
     tags: Vec<u32>,
 }
 
-fn test(params: &str) {
+fn process_inputs(params: &str) {
     let mut threads = Vec::new();
     for c in params.chars() {
         let thread_handle = thread::spawn(move || {
-            let (number_of_pictures, tag_popularity_vector, pictures) = parse_input(&c);
+            let pictures = parse_input(&c);
             let slides = create_slides(pictures);
-            let sorted_slides = sort_slides(slides);
-            let arranged_slides = arrange_slides(sorted_slides, &c);
+            let arranged_slides = arrange_slides(slides, &c);
             let score = rate_slideshow(&arranged_slides);
+            write_slides(&arranged_slides, format!("output_{}.txt", c).as_str());
             println!("Score for {}: {}", c, score);
-            write_slides(arranged_slides, format!("output_{}.txt", c).as_str());
         });
         threads.push(thread_handle);
     }
@@ -52,12 +54,8 @@ fn test(params: &str) {
 fn arrange_slides(mut slides: Vec<Slide>, name: &char) -> Vec<Slide> {
     let mut arranged_slides: Vec<Slide> = Vec::with_capacity(slides.len());
     let mut current_slide_index = 0;
-    let mut report = false;
-    if *name == 'b' {
-        report = true;
-    }
     while !slides.is_empty() {
-        if report && slides.len() % 5000 == 0 {
+        if slides.len() % PROGRESS_REPORT_INTERVAL == 0 {
             println!("Slides remaining for {}: {}", name, slides.len());
         }
         let current_slide = slides.remove(current_slide_index);
@@ -88,12 +86,8 @@ fn arrange_slides(mut slides: Vec<Slide>, name: &char) -> Vec<Slide> {
     arranged_slides
 }
 
-fn sort_slides(mut slides: Vec<Slide>) -> Vec<Slide> {
-    slides.sort_unstable_by(|x, y| y.number_of_tags.partial_cmp(&x.number_of_tags).unwrap());
-    slides
-}
-
-fn write_slides(slides: Vec<Slide>, filename: &str) {
+//Write output to file
+fn write_slides(slides: &Vec<Slide>, filename: &str) {
     let mut output = String::new();
     output += format!("{}\n", slides.len()).as_str();
     for slide in slides {
@@ -132,6 +126,7 @@ fn rate_slideshow(slides: &Vec<Slide>) -> u32 {
     score
 }
 
+//Create slides from pictures
 fn create_slides(mut pictures: Vec<Picture>) -> Vec<Slide> {
     let mut slides = Vec::new();
     let mut vertical_pictures = Vec::new();
@@ -187,7 +182,7 @@ fn create_slides(mut pictures: Vec<Picture>) -> Vec<Slide> {
     slides
 }
 
-fn parse_input(input_number: &char) -> (u32, Vec<u32>, Vec<Picture>) {
+fn parse_input(input_number: &char) -> (Vec<Picture>) {
     let input_name = match input_number {
         'a' => "a_example.txt",
         'b' => "b_lovely_landscapes.txt",
@@ -196,9 +191,10 @@ fn parse_input(input_number: &char) -> (u32, Vec<u32>, Vec<Picture>) {
         'e' => "e_shiny_selfies.txt",
         _ => panic!("Wrong input"),
     };
-    let file = fs::read_to_string(format!("inputs/{}", input_name)).unwrap();
+    let file = fs::read_to_string(format!("inputs/{}", input_name))
+        .expect("Couldn't find input files. Put input files in \"inputs\" folder");
     let mut lines = file.lines();
-    let number_of_pictures: u32 = lines.next().unwrap().trim().parse().unwrap();
+    let _number_of_pictures: u32 = lines.next().unwrap().trim().parse().unwrap();
     let mut picture_number = 0;
     let mut all_tags: HashSet<String> = HashSet::new();
     let mut picture_data: Vec<_> = lines
@@ -217,6 +213,7 @@ fn parse_input(input_number: &char) -> (u32, Vec<u32>, Vec<Picture>) {
                 tags: Vec::new(),
             };
             let tags: Vec<String> = words.map(|tag| String::from(tag.trim())).collect();
+            //println!("Tags: {:?}", tags);
             for tag in tags.iter() {
                 all_tags.insert(tag.clone());
             }
@@ -224,12 +221,11 @@ fn parse_input(input_number: &char) -> (u32, Vec<u32>, Vec<Picture>) {
             (picture, tags)
         })
         .collect();
+    //println!("Total amount of unique tags: {}", all_tags.len());
     //Take all tags and assign a unique integer id to each
     let mut tag_map = HashMap::new();
-    let mut tag_popularity_vector = Vec::with_capacity(all_tags.len());
     for (id, tag) in all_tags.drain().enumerate() {
         tag_map.insert(tag, id);
-        tag_popularity_vector.push(1);
     }
     let pictures = picture_data
         .drain(..)
@@ -238,12 +234,11 @@ fn parse_input(input_number: &char) -> (u32, Vec<u32>, Vec<Picture>) {
                 .iter()
                 .map(|tag| {
                     let id = tag_map.get(tag).unwrap().clone();
-                    tag_popularity_vector[id] += 1;
                     id as u32
                 })
                 .collect();
             picture
         })
         .collect();
-    (number_of_pictures, tag_popularity_vector, pictures)
+    pictures
 }
