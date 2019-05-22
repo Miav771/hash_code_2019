@@ -1,5 +1,5 @@
 # hash_code_2019
-My solution for HashCode2019. Written in Rust, currently achieves over 1 million points when running for 8 minutes on an i7-8550u.
+My solution for HashCode2019. Written in Rust, currently achieves over 1 million points when running for 6 minutes 30 seconds on an i7-8550u.
 
 Input | Points
 ------------ | -------------

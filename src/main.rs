@@ -1,7 +1,7 @@
+use rayon::prelude::*;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::thread;
 
 const PROGRESS_REPORT_INTERVAL: usize = 10000;
 const INPUT: &str = "abcde";
@@ -12,10 +12,10 @@ fn main() {
 
 #[derive(Debug)]
 struct Slide {
-    picture_id: u32,
-    second_picture_id: Option<u32>,
+    picture_id: usize,
+    second_picture_id: Option<usize>,
     orientation: Orientation,
-    number_of_tags: u8,
+    number_of_tags: usize,
     tags: Vec<u32>,
 }
 
@@ -27,27 +27,20 @@ enum Orientation {
 
 #[derive(Debug)]
 struct Picture {
-    picture_id: u32,
+    picture_id: usize,
     orientation: Orientation,
-    number_of_tags: u8,
+    number_of_tags: usize,
     tags: Vec<u32>,
 }
 
 fn process_inputs(params: &str) {
-    let mut threads = Vec::new();
     for c in params.chars() {
-        let thread_handle = thread::spawn(move || {
-            let pictures = parse_input(&c);
-            let slides = create_slides(pictures);
-            let arranged_slides = arrange_slides(slides, c);
-            let score = rate_slideshow(&arranged_slides);
-            write_slides(&arranged_slides, format!("output_{}.txt", c).as_str());
-            println!("Score for {}: {}", c, score);
-        });
-        threads.push(thread_handle);
-    }
-    for thread_handle in threads {
-        thread_handle.join().unwrap();
+        let pictures = parse_input(c);
+        let slides = create_slides(pictures);
+        let arranged_slides = arrange_slides(slides, c);
+        let score = rate_slideshow(&arranged_slides);
+        write_slides(&arranged_slides, format!("output_{}.txt", c).as_str());
+        println!("Score for {}: {}", c, score);
     }
 }
 
@@ -59,35 +52,40 @@ fn arrange_slides(mut slides: Vec<Slide>, name: char) -> Vec<Slide> {
             println!("Slides remaining for {}: {}", name, slides.len());
         }
         let current_slide = slides.remove(current_slide_index);
-        let mut smallest_waste = u8::max_value();
-        let mut smallest_waste_index = 0;
-        for (index, slide) in slides.iter().enumerate() {
-            let mut common_tags = 0;
-            for tag in current_slide.tags.iter() {
-                if slide.tags.contains(&tag) {
-                    common_tags += 1;
-                }
-            }
-            let left_side = current_slide.number_of_tags - common_tags;
-            let right_side = slide.number_of_tags - common_tags;
-            let score = cmp::min(common_tags, cmp::min(left_side, right_side));
-            let waste = left_side - score + right_side - score + common_tags - score;
-            if waste < smallest_waste {
-                smallest_waste = waste;
-                smallest_waste_index = index;
-            }
-            if waste == 0 {
-                break;
-            }
-        }
+
+        let (_, smallest_waste_index) = slides
+            .par_iter()
+            .enumerate()
+            .fold(
+                || (usize::max_value(), 0),
+                |(smallest_waste, smallest_waste_index), (index, slide)| {
+                    let waste = calculate_waste(&current_slide, slide);
+                    if waste < smallest_waste {
+                        return (waste, index);
+                    }
+                    (smallest_waste, smallest_waste_index)
+                },
+            )
+            .min_by_key(|(waste, _)| *waste)
+            .unwrap();
         arranged_slides.push(current_slide);
         current_slide_index = smallest_waste_index;
     }
     arranged_slides
 }
 
+fn calculate_waste(left_slide: &Slide, right_slide: &Slide) -> usize {
+    let common_tags = left_slide.tags.iter().fold(0, |intersection_count, tag| {
+        intersection_count + right_slide.tags.contains(tag) as usize
+    });
+    let left_side = left_slide.number_of_tags - common_tags;
+    let right_side = right_slide.number_of_tags - common_tags;
+    let score = cmp::min(common_tags, cmp::min(left_side, right_side));
+    left_side - score + right_side - score + common_tags - score
+}
+
 //Write output to file
-fn write_slides(slides: &Vec<Slide>, filename: &str) {
+fn write_slides(slides: &[Slide], filename: &str) {
     let mut output = String::new();
     output += format!("{}\n", slides.len()).as_str();
     for slide in slides {
@@ -106,8 +104,8 @@ fn write_slides(slides: &Vec<Slide>, filename: &str) {
     fs::write(filename, output).unwrap();
 }
 
-fn rate_slideshow(slides: &Vec<Slide>) -> u32 {
-    let mut score: u32 = 0;
+fn rate_slideshow(slides: &[Slide]) -> usize {
+    let mut score = 0;
     for index in 0..slides.len() - 1 {
         let mut common_tags = 0;
         for tag in slides[index + 1].tags.iter() {
@@ -121,7 +119,7 @@ fn rate_slideshow(slides: &Vec<Slide>) -> u32 {
                 slides[index + 1].number_of_tags,
                 slides[index].number_of_tags,
             ) - common_tags,
-        ) as u32;
+        );
     }
     score
 }
@@ -149,11 +147,11 @@ fn create_slides(mut pictures: Vec<Picture>) -> Vec<Slide> {
     while !vertical_pictures.is_empty() {
         let mut current_picture = vertical_pictures.pop().unwrap();
         let mut smallest_waste_index = 0;
-        let mut smallest_waste = u8::max_value();
-        for index in 0..vertical_pictures.len() {
+        let mut smallest_waste = u32::max_value();
+        for (index, picture) in vertical_pictures.iter().enumerate() {
             let mut waste = 0;
             for tag in current_picture.tags.iter() {
-                if vertical_pictures[index].tags.contains(tag) {
+                if picture.tags.contains(tag) {
                     waste += 1;
                 }
             }
@@ -171,18 +169,19 @@ fn create_slides(mut pictures: Vec<Picture>) -> Vec<Slide> {
                 current_picture.tags.push(tag);
             }
         }
+        current_picture.tags.sort_unstable();
         slides.push(Slide {
             picture_id: current_picture.picture_id,
             second_picture_id: Option::Some(matching_picture.picture_id),
             orientation: Orientation::Vertical,
-            number_of_tags: current_picture.tags.len() as u8,
+            number_of_tags: current_picture.tags.len(),
             tags: current_picture.tags,
         })
     }
     slides
 }
 
-fn parse_input(input_number: &char) -> (Vec<Picture>) {
+fn parse_input(input_number: char) -> (Vec<Picture>) {
     let input_name = match input_number {
         'a' => "a_example.txt",
         'b' => "b_lovely_landscapes.txt",
@@ -193,13 +192,13 @@ fn parse_input(input_number: &char) -> (Vec<Picture>) {
     };
     let file = fs::read_to_string(format!("inputs/{}", input_name))
         .expect("Couldn't find input files. Put input files in \"inputs\" folder");
-    let mut lines = file.lines();
-    let _number_of_pictures: u32 = lines.next().unwrap().trim().parse().unwrap();
-    let mut picture_number = 0;
+    let lines = file.lines();
     let mut all_tags: HashSet<String> = HashSet::new();
     let mut picture_data: Vec<_> = lines
-        .map(|line| {
-            let mut words = line.split(" ");
+        .skip(1)
+        .enumerate()
+        .map(|(picture_number, line)| {
+            let mut words = line.split(' ');
             let picture = Picture {
                 picture_id: picture_number,
                 orientation: match words.next().unwrap().trim() {
@@ -213,15 +212,12 @@ fn parse_input(input_number: &char) -> (Vec<Picture>) {
                 tags: Vec::new(),
             };
             let tags: Vec<String> = words.map(|tag| String::from(tag.trim())).collect();
-            //println!("Tags: {:?}", tags);
             for tag in tags.iter() {
                 all_tags.insert(tag.clone());
             }
-            picture_number += 1;
             (picture, tags)
         })
         .collect();
-    //println!("Total amount of unique tags: {}", all_tags.len());
     //Take all tags and assign a unique integer id to each
     let mut tag_map = HashMap::new();
     for (id, tag) in all_tags.drain().enumerate() {
@@ -233,10 +229,11 @@ fn parse_input(input_number: &char) -> (Vec<Picture>) {
             picture.tags = string_tags
                 .iter()
                 .map(|tag| {
-                    let id = tag_map.get(tag).unwrap().clone();
+                    let id = tag_map[tag];
                     id as u32
                 })
                 .collect();
+            picture.tags.sort_unstable();
             picture
         })
         .collect()

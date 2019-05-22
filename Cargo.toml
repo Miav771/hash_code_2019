@@ -5,3 +5,4 @@ authors = ["Tomasz Sus"]
 edition = "2018"
 
 [dependencies]
+rayon = "1"
