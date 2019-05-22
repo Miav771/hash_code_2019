@@ -39,7 +39,7 @@ fn process_inputs(params: &str) {
         let thread_handle = thread::spawn(move || {
             let pictures = parse_input(&c);
             let slides = create_slides(pictures);
-            let arranged_slides = arrange_slides(slides, &c);
+            let arranged_slides = arrange_slides(slides, c);
             let score = rate_slideshow(&arranged_slides);
             write_slides(&arranged_slides, format!("output_{}.txt", c).as_str());
             println!("Score for {}: {}", c, score);
@@ -51,7 +51,7 @@ fn process_inputs(params: &str) {
     }
 }
 
-fn arrange_slides(mut slides: Vec<Slide>, name: &char) -> Vec<Slide> {
+fn arrange_slides(mut slides: Vec<Slide>, name: char) -> Vec<Slide> {
     let mut arranged_slides: Vec<Slide> = Vec::with_capacity(slides.len());
     let mut current_slide_index = 0;
     while !slides.is_empty() {
@@ -61,15 +61,15 @@ fn arrange_slides(mut slides: Vec<Slide>, name: &char) -> Vec<Slide> {
         let current_slide = slides.remove(current_slide_index);
         let mut smallest_waste = u8::max_value();
         let mut smallest_waste_index = 0;
-        for index in 0..slides.len() {
+        for (index, slide) in slides.iter().enumerate() {
             let mut common_tags = 0;
             for tag in current_slide.tags.iter() {
-                if slides[index].tags.contains(&tag) {
+                if slide.tags.contains(&tag) {
                     common_tags += 1;
                 }
             }
             let left_side = current_slide.number_of_tags - common_tags;
-            let right_side = slides[index].number_of_tags - common_tags;
+            let right_side = slide.number_of_tags - common_tags;
             let score = cmp::min(common_tags, cmp::min(left_side, right_side));
             let waste = left_side - score + right_side - score + common_tags - score;
             if waste < smallest_waste {
@@ -227,7 +227,7 @@ fn parse_input(input_number: &char) -> (Vec<Picture>) {
     for (id, tag) in all_tags.drain().enumerate() {
         tag_map.insert(tag, id);
     }
-    let pictures = picture_data
+    picture_data
         .drain(..)
         .map(|(mut picture, string_tags)| {
             picture.tags = string_tags
@@ -239,6 +239,5 @@ fn parse_input(input_number: &char) -> (Vec<Picture>) {
                 .collect();
             picture
         })
-        .collect();
-    pictures
+        .collect()
 }
