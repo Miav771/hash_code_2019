@@ -75,26 +75,22 @@ fn arrange_slides(mut slides: Vec<Slide>, name: char) -> Vec<Slide> {
 }
 
 fn calculate_waste(left_slide: &Slide, right_slide: &Slide) -> usize {
-    //Since both vectors of tags are ordered in an ascending fashion
-    //The tag for which we are looking can not be placed before the previously found tag
-    //And if the tag we are currently on is larger than the tag we are looking for
-    //Then the tag that we are looking for does not exist
-    //This means that we never need to look at the tags we have already examined
-    //I.e. we only need to traverse the vector once rather than once for every tag
-    let (common_tags, _) =
-        left_slide
-            .tags
-            .iter()
-            .fold((0, 0), |(intersection_count, number_checked), left_tag| {
-                for (index, right_tag) in right_slide.tags.iter().enumerate().skip(number_checked) {
-                    if right_tag ==  left_tag{
-                        return (intersection_count + 1, index+1);
-                    }else if right_tag >  left_tag{
-                        return (intersection_count, index);
-                    }                 
-                }
-                (intersection_count, number_checked)
-            });
+    let mut common_tags = 0;
+    let mut left_iter = left_slide.tags.iter();
+    //Since the vectors are sorted, we can traverse each only once
+    if let Some(mut left_tag) = left_iter.next(){
+        'outer: for right_tag in right_slide.tags.iter(){
+            while left_tag < right_tag {
+                left_tag = match left_iter.next() {
+                    Some(left_tag) => left_tag,
+                    None => break 'outer,
+                };
+            }
+            if left_tag == right_tag {
+                common_tags += 1;
+            }
+        }
+    }
     let left_side = left_slide.number_of_tags - common_tags;
     let right_side = right_slide.number_of_tags - common_tags;
     let score = cmp::min(common_tags, cmp::min(left_side, right_side));
