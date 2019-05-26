@@ -75,9 +75,26 @@ fn arrange_slides(mut slides: Vec<Slide>, name: char) -> Vec<Slide> {
 }
 
 fn calculate_waste(left_slide: &Slide, right_slide: &Slide) -> usize {
-    let common_tags = left_slide.tags.iter().fold(0, |intersection_count, tag| {
-        intersection_count + right_slide.tags.contains(tag) as usize
-    });
+    //Since both vectors of tags are ordered in an ascending fashion
+    //The tag for which we are looking can not be placed before the previously found tag
+    //And if the tag we are currently on is larger than the tag we are looking for
+    //Then the tag that we are looking for does not exist
+    //This means that we never need to look at the tags we have already examined
+    //I.e. we only need to traverse the vector once rather than once for every tag
+    let (common_tags, _) =
+        left_slide
+            .tags
+            .iter()
+            .fold((0, 0), |(intersection_count, number_checked), left_tag| {
+                for (index, right_tag) in right_slide.tags.iter().enumerate().skip(number_checked) {
+                    if right_tag ==  left_tag{
+                        return (intersection_count + 1, index+1);
+                    }else if right_tag >  left_tag{
+                        return (intersection_count, index);
+                    }                 
+                }
+                (intersection_count, number_checked)
+            });
     let left_side = left_slide.number_of_tags - common_tags;
     let right_side = right_slide.number_of_tags - common_tags;
     let score = cmp::min(common_tags, cmp::min(left_side, right_side));
@@ -169,6 +186,7 @@ fn create_slides(mut pictures: Vec<Picture>) -> Vec<Slide> {
                 current_picture.tags.push(tag);
             }
         }
+        //Sort tags for faster future processing
         current_picture.tags.sort_unstable();
         slides.push(Slide {
             picture_id: current_picture.picture_id,
@@ -195,6 +213,7 @@ fn parse_input(input_number: char) -> (Vec<Picture>) {
     let lines = file.lines();
     let mut all_tags: HashSet<String> = HashSet::new();
     let mut picture_data: Vec<_> = lines
+        //First line has no picture data in it
         .skip(1)
         .enumerate()
         .map(|(picture_number, line)| {
@@ -207,8 +226,8 @@ fn parse_input(input_number: char) -> (Vec<Picture>) {
                     _ => panic!("Wrong orientation"),
                 },
                 number_of_tags: words.next().unwrap().trim().parse().unwrap(),
-                //This will be populated with ids of tags, rather than actual tags
-                //For now the tags for this picture will be kept as a second element of its tuple
+                //This will be populated with integer representation of tags, rather than actual tags
+                //For now the tags for this picture will be kept as a second element of a tuple
                 tags: Vec::new(),
             };
             let tags: Vec<String> = words.map(|tag| String::from(tag.trim())).collect();
@@ -218,7 +237,7 @@ fn parse_input(input_number: char) -> (Vec<Picture>) {
             (picture, tags)
         })
         .collect();
-    //Take all tags and assign a unique integer id to each
+    //Map String tags to u32 integers
     let mut tag_map = HashMap::new();
     for (id, tag) in all_tags.drain().enumerate() {
         tag_map.insert(tag, id);
@@ -233,6 +252,7 @@ fn parse_input(input_number: char) -> (Vec<Picture>) {
                     id as u32
                 })
                 .collect();
+            //Sort tags for faster future processing
             picture.tags.sort_unstable();
             picture
         })
