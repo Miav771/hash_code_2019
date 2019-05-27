@@ -52,24 +52,13 @@ fn arrange_slides(mut slides: Vec<Slide>, name: char) -> Vec<Slide> {
             println!("Slides remaining for {}: {}", name, slides.len());
         }
         let current_slide = slides.remove(current_slide_index);
-
-        let (_, smallest_waste_index) = slides
+        current_slide_index = slides
             .par_iter()
             .enumerate()
-            .fold(
-                || (usize::max_value(), 0),
-                |(smallest_waste, smallest_waste_index), (index, slide)| {
-                    let waste = calculate_waste(&current_slide, slide);
-                    if waste < smallest_waste {
-                        return (waste, index);
-                    }
-                    (smallest_waste, smallest_waste_index)
-                },
-            )
-            .min_by_key(|(waste, _)| *waste)
-            .unwrap();
+            .min_by_key(|(_, potential_match)| calculate_waste(&current_slide, potential_match))
+            .map(|(index, _)| index)
+            .unwrap_or(0);
         arranged_slides.push(current_slide);
-        current_slide_index = smallest_waste_index;
     }
     arranged_slides
 }
@@ -78,8 +67,8 @@ fn calculate_waste(left_slide: &Slide, right_slide: &Slide) -> usize {
     let mut common_tags = 0;
     let mut left_iter = left_slide.tags.iter();
     //Since the vectors are sorted, we can traverse each only once
-    if let Some(mut left_tag) = left_iter.next(){
-        'outer: for right_tag in right_slide.tags.iter(){
+    if let Some(mut left_tag) = left_iter.next() {
+        'outer: for right_tag in right_slide.tags.iter() {
             while left_tag < right_tag {
                 left_tag = match left_iter.next() {
                     Some(left_tag) => left_tag,
