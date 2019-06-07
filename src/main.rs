@@ -15,7 +15,7 @@ struct Slide {
     picture_id: usize,
     second_picture_id: Option<usize>,
     orientation: Orientation,
-    number_of_tags: usize,
+    number_of_tags: u32,
     tags: Vec<u32>,
 }
 
@@ -29,7 +29,7 @@ enum Orientation {
 struct Picture {
     picture_id: usize,
     orientation: Orientation,
-    number_of_tags: usize,
+    number_of_tags: u32,
     tags: Vec<u32>,
 }
 
@@ -63,12 +63,12 @@ fn arrange_slides(mut slides: Vec<Slide>, name: char) -> Vec<Slide> {
     arranged_slides
 }
 
-fn calculate_waste(left_slide: &Slide, right_slide: &Slide) -> usize {
+fn calculate_common_tags(left_tags: &[u32], right_tags: &[u32]) -> u32 {
     let mut common_tags = 0;
-    let mut left_iter = left_slide.tags.iter();
+    let mut left_iter = left_tags.iter();
     //Since the vectors are sorted, we can traverse each only once
     if let Some(mut left_tag) = left_iter.next() {
-        'outer: for right_tag in right_slide.tags.iter() {
+        'outer: for right_tag in right_tags.iter() {
             while left_tag < right_tag {
                 left_tag = match left_iter.next() {
                     Some(left_tag) => left_tag,
@@ -80,6 +80,18 @@ fn calculate_waste(left_slide: &Slide, right_slide: &Slide) -> usize {
             }
         }
     }
+    common_tags
+}
+
+fn calculate_score(left_slide: &Slide, right_slide: &Slide) -> u32 {
+    let common_tags = calculate_common_tags(&left_slide.tags, &right_slide.tags);
+    let left_side = left_slide.number_of_tags - common_tags;
+    let right_side = right_slide.number_of_tags - common_tags;
+    cmp::min(common_tags, cmp::min(left_side, right_side))
+}
+
+fn calculate_waste(left_slide: &Slide, right_slide: &Slide) -> u32 {
+    let common_tags = calculate_common_tags(&left_slide.tags, &right_slide.tags);
     let left_side = left_slide.number_of_tags - common_tags;
     let right_side = right_slide.number_of_tags - common_tags;
     let score = cmp::min(common_tags, cmp::min(left_side, right_side));
@@ -106,29 +118,15 @@ fn write_slides(slides: &[Slide], filename: &str) {
     fs::write(filename, output).unwrap();
 }
 
-fn rate_slideshow(slides: &[Slide]) -> usize {
-    let mut score = 0;
-    for index in 0..slides.len() - 1 {
-        let mut common_tags = 0;
-        for tag in slides[index + 1].tags.iter() {
-            if slides[index].tags.contains(&tag) {
-                common_tags += 1;
-            }
-        }
-        score += cmp::min(
-            common_tags,
-            cmp::min(
-                slides[index + 1].number_of_tags,
-                slides[index].number_of_tags,
-            ) - common_tags,
-        );
-    }
-    score
+fn rate_slideshow(slides: &[Slide]) -> u32 {
+    slides.windows(2).fold(0, |score, slide_pair|{
+        calculate_score(&slide_pair[0], &slide_pair[1]) + score
+    })
 }
 
 //Create slides from pictures
 fn create_slides(mut pictures: Vec<Picture>) -> Vec<Slide> {
-    let mut slides = Vec::new();
+    let mut slides = Vec::with_capacity(pictures.len()/2);
     let mut vertical_pictures = Vec::new();
     for picture in pictures.drain(..) {
         match picture.orientation {
@@ -146,17 +144,11 @@ fn create_slides(mut pictures: Vec<Picture>) -> Vec<Slide> {
     }
     vertical_pictures
         .sort_unstable_by(|x, y| y.number_of_tags.partial_cmp(&x.number_of_tags).unwrap());
-    while !vertical_pictures.is_empty() {
-        let mut current_picture = vertical_pictures.pop().unwrap();
+    while let Some(mut current_picture) = vertical_pictures.pop() {
         let mut smallest_waste_index = 0;
         let mut smallest_waste = u32::max_value();
         for (index, picture) in vertical_pictures.iter().enumerate() {
-            let mut waste = 0;
-            for tag in current_picture.tags.iter() {
-                if picture.tags.contains(tag) {
-                    waste += 1;
-                }
-            }
+            let waste = calculate_common_tags(&current_picture.tags, &picture.tags);
             if waste < smallest_waste {
                 smallest_waste = waste;
                 smallest_waste_index = index;
@@ -166,18 +158,16 @@ fn create_slides(mut pictures: Vec<Picture>) -> Vec<Slide> {
             }
         }
         let mut matching_picture = vertical_pictures.remove(smallest_waste_index);
-        for tag in matching_picture.tags.drain(..) {
-            if !current_picture.tags.contains(&tag) {
-                current_picture.tags.push(tag);
-            }
-        }
+        current_picture.tags.append(&mut matching_picture.tags);
+        current_picture.tags.dedup();
+        current_picture.tags.sort_unstable();
         //Sort tags for faster future processing
         current_picture.tags.sort_unstable();
         slides.push(Slide {
             picture_id: current_picture.picture_id,
             second_picture_id: Option::Some(matching_picture.picture_id),
             orientation: Orientation::Vertical,
-            number_of_tags: current_picture.tags.len(),
+            number_of_tags: current_picture.tags.len() as u32,
             tags: current_picture.tags,
         })
     }
